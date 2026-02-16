@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>灵动音乐播放器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        neon: {
+                            pink: '#ff2d95',
+                            blue: '#00d4ff',
+                            purple: '#b44aff',
+                            green: '#00ff88'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: linear-gradient(135deg, #0a0a0f 0%, #1a0a2e 50%, #0a1628 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        .bg-orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.25;
+            pointer-events: none;
+            will-change: transform;
+        }
+
+        .orb-1 {
+            width: 600px;
+            height: 600px;
+            background: #ff2d95;
+            top: -300px;
+            left: -200px;
+            animation: orbFloat1 20s ease-in-out infinite;
+        }
+
+        .orb-2 {
+            width: 700px;
+            height: 700px;
+            background: #00d4ff;
+            bottom: -300px;
+            right: -200px;
+            animation: orbFloat2 25s ease-in-out infinite;
+        }
+
+        @keyframes orbFloat1 {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(100px, 50px); }
+        }
+
+        @keyframes orbFloat2 {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(-80px, -60px); }
+        }
+
+        #islandContainer {
+            position: fixed;
+            z-index: 1000;
+            will-change: transform;
+            touch-action: none;
+            cursor: grab;
+        }
+
+        #islandContainer.dragging {
+            cursor: grabbing;
+            transition: none !important;
+        }
+
+        #islandContainer.snapping {
+            transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .dynamic-island {
+            position: relative;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-origin: center center;
+            will-change: width, height, border-radius;
+        }
+
+        .dynamic-island.empty {
+            width: 200px;
+            height: 50px;
+            border-radius: 25px;
+        }
+
+        .dynamic-island.minimized {
+            width: 240px;
+            height: 52px;
+            border-radius: 26px;
+        }
+
+        .dynamic-island.expanded {
+            width: 360px;
+            height: 580px;
+            border-radius: 40px;
+        }
+
+        .glass {
+            background: rgba(20, 20, 30, 0.75);
+            backdrop-filter: blur(50px) saturate(180%);
+            -webkit-backdrop-filter: blur(50px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 
+                0 25px 50px -12px rgba(0, 0, 0, 0.5),
+                0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+                0 0 80px rgba(255, 45, 149, 0.1);
+        }
+
+        .progress-bar {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 5px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            outline: none;
+            position: relative;
+            z-index: 10;
+        }
+
+        .progress-bar::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ff2d95, #b44aff);
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(255, 45, 149, 0.6);
+            transition: transform 0.15s;
+        }
+
+        .progress-bar::-webkit-slider-thumb:hover {
+            transform: scale(1.3);
+        }
+
+        .volume-slider {
+            -webkit-appearance: none;
+            width: 80px;
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.15);
+            cursor: pointer;
+            outline: none;
+            position: relative;
+            z-index: 10;
+        }
+
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #00d4ff;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+        }
+
+        .cover-spin {
+            animation: spin 20s linear infinite;
+        }
+
+        .cover-spin.paused {
+            animation-play-state: paused;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .btn-control {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            z-index: 10;
+        }
+
+        .btn-control:hover {
+            transform: scale(1.15);
+        }
+
+        .btn-control:active {
+            transform: scale(0.95);
+        }
+
+        .btn-play {
+            background: linear-gradient(135deg, #ff2d95, #b44aff);
+            box-shadow: 0 8px 25px rgba(255, 45, 149, 0.4);
+        }
+
+        .btn-play:hover {
+            box-shadow: 0 12px 35px rgba(255, 45, 149, 0.6);
+        }
+
+        .playlist-item {
+            transition: all 0.2s ease;
+        }
+
+        .playlist-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .playlist-item.active {
+            background: rgba(255, 45, 149, 0.15);
+            border-left: 3px solid #ff2d95;
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+        }
+
+        .mini-wave {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            height: 24px;
+        }
+
+        .mini-wave span {
+            width: 3px;
+            background: linear-gradient(to top, #ff2d95, #00d4ff);
+            border-radius: 2px;
+            transition: height 0.08s ease;
+        }
+
+        .drag-hint {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 12px;
+            pointer-events: none;
+            animation: fadeInOut 3s ease-in-out infinite;
+        }
+
+        @keyframes fadeInOut {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 0.6; }
+        }
+
+        .playing-glow {
+            box-shadow: 
+                0 25px 50px -12px rgba(0, 0, 0, 0.5),
+                0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+                0 0 60px rgba(255, 45, 149, 0.2);
+        }
+
+        .cover-bg {
+            position: absolute;
+            inset: -30px;
+            filter: blur(50px) brightness(0.6);
+            opacity: 0.5;
+            border-radius: 50%;
+            transition: background 0.5s ease;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+            z-index: 20;
+        }
+
+        .snap-indicator {
+            position: fixed;
+            width: 100px;
+            height: 100px;
+            border: 2px dashed rgba(255, 45, 149, 0.5);
+            border-radius: 20px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .snap-indicator.visible {
+            opacity: 1;
+        }
+
+        .add-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ff2d95, #b44aff);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 15px rgba(255, 45, 149, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+            flex-shrink: 0;
+            pointer-events: none;
+        }
+
+        .file-input-wrapper:hover .add-btn {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(255, 45, 149, 0.6);
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+
+    <div class="snap-indicator" id="snapIndicator"></div>
+
+    <div id="islandContainer" class="snapping">
+        <div id="dynamicIsland" class="dynamic-island empty glass overflow-hidden relative">
+            
+            <!-- 空状态 -->
+            <div id="emptyState" class="absolute inset-0 flex items-center justify-center px-4">
+                <label class="file-input-wrapper">
+                    <input type="file" accept="audio/*" multiple onchange="handleFiles(event)">
+                    <div class="add-btn">
+                        <i class="fas fa-plus text-white text-sm"></i>
+                    </div>
+                    <span class="text-white/70 text-sm font-medium">添加音乐</span>
+                </label>
+            </div>
+
+            <!-- 迷你模式 -->
+            <div id="miniPlayer" class="absolute inset-0 flex items-center px-4 opacity-0 pointer-events-none transition-opacity duration-200">
+                <div class="mini-wave mr-3" id="miniWave">
+                    <span style="height: 6px;"></span>
+                    <span style="height: 12px;"></span>
+                    <span style="height: 6px;"></span>
+                    <span style="height: 16px;"></span>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-white text-sm font-medium truncate" id="miniTitle">未播放</p>
+                    <p class="text-gray-400 text-xs truncate" id="miniArtist">添加音乐</p>
+                </div>
+                <div class="flex items-center gap-1 ml-2">
+                    <button class="w-8 h-8 flex items-center justify-center text-white/60 hover:text-neon-pink transition-colors btn-control" onclick="event.stopPropagation(); prevTrack()">
+                        <i class="fas fa-backward-step text-sm"></i>
+                    </button>
+                    <button class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors btn-control" onclick="event.stopPropagation(); togglePlay()">
+                        <i class="fas fa-play text-xs" id="miniPlayIcon"></i>
+                    </button>
+                    <button class="w-8 h-8 flex items-center justify-center text-white/60 hover:text-neon-pink transition-colors btn-control" onclick="event.stopPropagation(); nextTrack()">
+                        <i class="fas fa-forward-step text-sm"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 展开模式 -->
+            <div id="expandedPlayer" class="absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-200 p-5 flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <button class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white transition-colors btn-control" onclick="minimizePlayer()">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <span class="text-gray-400 text-xs font-medium tracking-wider">正在播放</span>
+                    <button class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white transition-colors btn-control" onclick="togglePlaylist()">
+                        <i class="fas fa-list-ul"></i>
+                    </button>
+                </div>
+
+                <div class="flex justify-center mb-5">
+                    <div class="relative">
+                        <div class="cover-bg" id="coverBg"></div>
+                        <div class="w-44 h-44 rounded-full overflow-hidden shadow-2xl cover-spin paused relative z-10" id="coverArt">
+                            <div class="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+                                <i class="fas fa-music text-4xl text-white/20"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-center mb-4">
+                    <h2 class="text-white text-lg font-bold mb-1 truncate" id="songTitle">未选择歌曲</h2>
+                    <p class="text-gray-400 text-sm truncate" id="songArtist">请添加音乐</p>
+                </div>
+
+                <div class="flex items-end justify-center h-14 mb-4 rounded-lg overflow-hidden">
+                    <canvas id="visualizerCanvas" width="320" height="56"></canvas>
+                </div>
+
+                <div class="mb-4">
+                    <input type="range" class="progress-bar" id="progressBar" value="0" min="0" max="100" step="0.1">
+                    <div class="flex justify-between mt-2 text-xs text-gray-400">
+                        <span id="currentTime">0:00</span>
+                        <span id="totalTime">0:00</span>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-center gap-6 mb-4">
+                    <button class="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white transition-colors btn-control" onclick="toggleShuffle()" id="shuffleBtn">
+                        <i class="fas fa-shuffle"></i>
+                    </button>
+                    <button class="w-10 h-10 flex items-center justify-center text-white hover:text-neon-pink transition-colors btn-control" onclick="prevTrack()">
+                        <i class="fas fa-backward-step text-xl"></i>
+                    </button>
+                    <button class="btn-play w-14 h-14 rounded-full flex items-center justify-center text-white btn-control" onclick="togglePlay()">
+                        <i class="fas fa-play text-lg" id="playIcon"></i>
+                    </button>
+                    <button class="w-10 h-10 flex items-center justify-center text-white hover:text-neon-pink transition-colors btn-control" onclick="nextTrack()">
+                        <i class="fas fa-forward-step text-xl"></i>
+                    </button>
+                    <button class="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white transition-colors btn-control relative" onclick="toggleRepeat()" id="repeatBtn">
+                        <i class="fas fa-repeat"></i>
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between mt-auto">
+                    <div class="flex items-center gap-2">
+                        <button class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white transition-colors btn-control" onclick="toggleMute()">
+                            <i class="fas fa-volume-high text-sm" id="volumeIcon"></i>
+                        </button>
+                        <input type="range" class="volume-slider" id="volumeSlider" value="80" min="0" max="100" oninput="setVolume(this.value)">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="file-input-wrapper w-8 h-8 flex items-center justify-center text-gray-400 hover:text-neon-pink transition-colors btn-control">
+                            <input type="file" accept="audio/*" multiple onchange="handleFiles(event)">
+                            <i class="fas fa-plus text-sm"></i>
+                        </label>
+                        <button class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-neon-pink transition-colors btn-control" onclick="toggleLike()" id="likeBtn">
+                            <i class="far fa-heart text-sm"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 播放列表 -->
+            <div id="playlistPanel" class="absolute inset-0 glass opacity-0 pointer-events-none transition-opacity duration-200 p-4 flex flex-col">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-white font-bold">播放列表</h3>
+                    <div class="flex items-center gap-2">
+                        <label class="file-input-wrapper w-8 h-8 flex items-center justify-center text-neon-pink hover:text-neon-blue transition-colors btn-control">
+                            <input type="file" accept="audio/*" multiple onchange="handleFiles(event)">
+                            <i class="fas fa-plus text-sm"></i>
+                        </label>
+                        <button class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white transition-colors btn-control" onclick="togglePlaylist()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto -mx-1 px-1" id="playlistContainer">
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fas fa-music text-3xl mb-2 opacity-30"></i>
+                        <p class="text-sm">暂无音乐</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="drag-hint" id="dragHint">拖动灵动岛到任意位置 · 自动吸附边缘</div>
+
+    <script>
+        // ==================== 状态管理 ====================
+        const state = {
+            isPlaying: false,
+            isExpanded: false,
+            isPlaylistOpen: false,
+            currentTrack: -1,
+            volume: 0.8,
+            isMuted: false,
+            isShuffled: false,
+            repeatMode: 0,
+            isLiked: false,
+            playlist: [],
+            isDragging: false,
+            isPreDragging: false,
+            dragStartX: 0,
+            dragStartY: 0,
+            currentX: 0,
+            currentY: 0,
+            initialX: 0,
+            initialY: 0
+        };
+
+        // ==================== 音频引擎 ====================
+        let audioContext = null;
+        let analyser = null;
+        let sourceNode = null;
+        let gainNode = null;
+        const audio = new Audio();
+        audio.volume = state.volume;
+
+        function initAudioContext() {
+            if (audioContext) return;
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioContext = new AudioContext();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                analyser.smoothingTimeConstant = 0.8;
+                gainNode = audioContext.createGain();
+                
+                sourceNode = audioContext.createMediaElementSource(audio);
+                sourceNode.connect(analyser);
+                analyser.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                gainNode.gain.value = state.volume;
+            } catch (e) {
+                console.error('音频初始化失败:', e);
+            }
+        }
+
+        // ==================== DOM 元素 ====================
+        const container = document.getElementById('islandContainer');
+        const dynamicIsland = document.getElementById('dynamicIsland');
+        const emptyState = document.getElementById('emptyState');
+        const miniPlayer = document.getElementById('miniPlayer');
+        const expandedPlayer = document.getElementById('expandedPlayer');
+        const playlistPanel = document.getElementById('playlistPanel');
+        const visualizerCanvas = document.getElementById('visualizerCanvas');
+        const ctx = visualizerCanvas.getContext('2d');
+        const snapIndicator = document.getElementById('snapIndicator');
+        const dragHint = document.getElementById('dragHint');
+
+        // ==================== 文件处理 ====================
+        function handleFiles(event) {
+            const files = event.target.files ? Array.from(event.target.files) : [];
+            if (!files.length) return;
+
+            initAudioContext();
+            
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+
+            files.forEach(file => {
+                try {
+                    const url = URL.createObjectURL(file);
+                    const name = file.name.replace(/\.[^/.]+$/, '');
+                    const parts = name.split(' - ');
+                    
+                    state.playlist.push({
+                        url,
+                        title: parts[1] || name,
+                        artist: parts[0] || '未知艺术家',
+                        duration: 0,
+                        cover: generateCoverColor(file.name)
+                    });
+                } catch (e) {
+                    console.error('文件处理失败:', e);
+                }
+            });
+
+            renderPlaylist();
+            updateUIState(); // 关键：更新UI状态
+
+            // 如果是第一次添加，自动播放
+            if (state.currentTrack === -1 && state.playlist.length) {
+                loadTrack(0);
+                setTimeout(() => {
+                    togglePlay();
+                }, 150);
+            }
+            
+            event.target.value = '';
+        }
+
+        function generateCoverColor(seed) {
+            const palettes = [
+                ['#667eea', '#764ba2'],
+                ['#f093fb', '#f5576c'],
+                ['#4facfe', '#00f2fe'],
+                ['#43e97b', '#38f9d7'],
+                ['#fa709a', '#fee140'],
+                ['#a18cd1', '#fbc2eb'],
+                ['#ff9a9e', '#fecfef'],
+                ['#ffecd2', '#fcb69f'],
+                ['#a1c4fd', '#c2e9fb'],
+                ['#d299c2', '#fef9d7']
+            ];
+            let hash = 0;
+            for (let i = 0; i < seed.length; i++) {
+                hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+            }
+            const [c1, c2] = palettes[Math.abs(hash) % palettes.length];
+            return `linear-gradient(135deg, ${c1}, ${c2})`;
+        }
+
+        // ==================== 播放控制 ====================
+        function loadTrack(index) {
+            if (index < 0 || index >= state.playlist.length) return;
+            
+            state.currentTrack = index;
+            const track = state.playlist[index];
+            
+            audio.src = track.url;
+            
+            document.getElementById('songTitle').textContent = track.title;
+            document.getElementById('songArtist').textContent = track.artist;
+            document.getElementById('miniTitle').textContent = track.title;
+            document.getElementById('miniArtist').textContent = track.artist;
+            
+            const coverArt = document.getElementById('coverArt');
+            const coverBg = document.getElementById('coverBg');
+            coverArt.style.background = track.cover;
+            coverBg.style.background = track.cover;
+            
+            document.querySelectorAll('.playlist-item').forEach((item, i) => {
+                item.classList.toggle('active', i === index);
+            });
+
+            audio.onloadedmetadata = () => {
+                track.duration = audio.duration;
+                document.getElementById('totalTime').textContent = formatTime(audio.duration);
+            };
+
+            state.isLiked = false;
+            updateLikeButton();
+        }
+
+        function togglePlay() {
+            if (!state.playlist.length) return;
+            if (state.currentTrack === -1) loadTrack(0);
+
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+
+            state.isPlaying = !state.isPlaying;
+            
+            if (state.isPlaying) {
+                audio.play().catch(e => {
+                    console.error('播放失败:', e);
+                    state.isPlaying = false;
+                    updatePlayState();
+                });
+            } else {
+                audio.pause();
+            }
+            
+            updatePlayState();
+        }
+
+        function updatePlayState() {
+            const playIcon = document.getElementById('playIcon');
+            const miniPlayIcon = document.getElementById('miniPlayIcon');
+            const coverArt = document.getElementById('coverArt');
+            
+            playIcon.className = 'fas ' + (state.isPlaying ? 'fa-pause' : 'fa-play') + ' text-lg';
+            miniPlayIcon.className = 'fas ' + (state.isPlaying ? 'fa-pause' : 'fa-play') + ' text-xs';
+            coverArt.classList.toggle('paused', !state.isPlaying);
+            dynamicIsland.classList.toggle('playing-glow', state.isPlaying);
+        }
+
+        function prevTrack() {
+            if (!state.playlist.length) return;
+            const newIndex = state.currentTrack <= 0 ? state.playlist.length - 1 : state.currentTrack - 1;
+            loadTrack(newIndex);
+            if (state.isPlaying) audio.play().catch(console.error);
+        }
+
+        function nextTrack() {
+            if (!state.playlist.length) return;
+            const newIndex = state.isShuffled 
+                ? Math.floor(Math.random() * state.playlist.length)
+                : (state.currentTrack + 1) % state.playlist.length;
+            loadTrack(newIndex);
+            if (state.isPlaying) audio.play().catch(console.error);
+        }
+
+        function seekTo(value) {
+            if (!audio.duration) return;
+            audio.currentTime = (value / 100) * audio.duration;
+        }
+
+        function setVolume(value) {
+            const vol = value / 100;
+            state.volume = vol;
+            audio.volume = vol;
+            if (gainNode) gainNode.gain.value = vol;
+            state.isMuted = vol === 0;
+            updateVolumeIcon();
+        }
+
+        function toggleMute() {
+            state.isMuted = !state.isMuted;
+            const volumeSlider = document.getElementById('volumeSlider');
+            
+            if (state.isMuted) {
+                volumeSlider.value = 0;
+                audio.volume = 0;
+                if (gainNode) gainNode.gain.value = 0;
+            } else {
+                const restoreVol = state.volume > 0 ? state.volume : 0.5;
+                state.volume = restoreVol;
+                volumeSlider.value = restoreVol * 100;
+                audio.volume = restoreVol;
+                if (gainNode) gainNode.gain.value = restoreVol;
+            }
+            updateVolumeIcon();
+        }
+
+        function toggleShuffle() {
+            state.isShuffled = !state.isShuffled;
+            document.getElementById('shuffleBtn').classList.toggle('text-neon-pink', state.isShuffled);
+        }
+
+        function toggleRepeat() {
+            state.repeatMode = (state.repeatMode + 1) % 3;
+            const btn = document.getElementById('repeatBtn');
+            btn.classList.remove('text-gray-400', 'text-neon-pink', 'text-neon-blue');
+            
+            const classes = ['text-gray-400', 'text-neon-pink', 'text-neon-blue'];
+            btn.classList.add(classes[state.repeatMode]);
+            btn.innerHTML = state.repeatMode === 2 
+                ? '<i class="fas fa-repeat"></i><span class="text-[8px] absolute -top-0.5 -right-0.5">1</span>'
+                : '<i class="fas fa-repeat"></i>';
+        }
+
+        function toggleLike() {
+            state.isLiked = !state.isLiked;
+            updateLikeButton();
+        }
+
+        function updateLikeButton() {
+            const btn = document.getElementById('likeBtn');
+            btn.innerHTML = state.isLiked 
+                ? '<i class="fas fa-heart text-sm text-neon-pink"></i>'
+                : '<i class="far fa-heart text-sm"></i>';
+        }
+
+        function updateVolumeIcon() {
+            const icon = document.getElementById('volumeIcon');
+            icon.className = 'fas ' + (state.isMuted || state.volume === 0 ? 'fa-volume-xmark' : 'fa-volume-high') + ' text-sm';
+        }
+
+        // ==================== UI 控制 (核心修复) ====================
+        function updateUIState() {
+            const hasMusic = state.playlist.length > 0;
+            
+            // 1. 处理空状态
+            emptyState.classList.toggle('opacity-0', hasMusic);
+            emptyState.classList.toggle('pointer-events-none', hasMusic);
+            dragHint.style.display = hasMusic ? 'none' : 'block';
+
+            // 2. 根据状态决定显示哪个界面
+            if (!hasMusic) {
+                // 无音乐：重置所有状态
+                dynamicIsland.classList.remove('minimized', 'expanded');
+                dynamicIsland.classList.add('empty');
+                miniPlayer.classList.add('opacity-0', 'pointer-events-none');
+                expandedPlayer.classList.add('opacity-0', 'pointer-events-none');
+                playlistPanel.classList.add('opacity-0', 'pointer-events-none');
+                state.isExpanded = false;
+                state.isPlaylistOpen = false;
+            } else {
+                // 有音乐：根据当前状态决定显示
+                if (state.isPlaylistOpen) {
+                    // 播放列表模式：Expanded尺寸，显示列表，隐藏播放器主体
+                    dynamicIsland.classList.remove('empty', 'minimized');
+                    dynamicIsland.classList.add('expanded');
+                    miniPlayer.classList.add('opacity-0', 'pointer-events-none');
+                    expandedPlayer.classList.add('opacity-0', 'pointer-events-none'); // 隐藏播放器主体
+                    playlistPanel.classList.remove('opacity-0', 'pointer-events-none'); // 显示列表
+                } else if (state.isExpanded) {
+                    // 展开模式：Expanded尺寸，显示播放器主体，隐藏列表
+                    dynamicIsland.classList.remove('empty', 'minimized');
+                    dynamicIsland.classList.add('expanded');
+                    miniPlayer.classList.add('opacity-0', 'pointer-events-none');
+                    expandedPlayer.classList.remove('opacity-0', 'pointer-events-none');
+                    playlistPanel.classList.add('opacity-0', 'pointer-events-none');
+                } else {
+                    // 最小化模式：Minimized尺寸，显示迷你条
+                    dynamicIsland.classList.remove('empty', 'expanded');
+                    dynamicIsland.classList.add('minimized');
+                    miniPlayer.classList.remove('opacity-0', 'pointer-events-none');
+                    expandedPlayer.classList.add('opacity-0', 'pointer-events-none');
+                    playlistPanel.classList.add('opacity-0', 'pointer-events-none');
+                }
+            }
+        }
+
+        function expandPlayer() {
+            if (!state.playlist.length) return;
+            state.isExpanded = true;
+            state.isPlaylistOpen = false; // 关闭列表以防叠加
+            updateUIState();
+        }
+
+        function minimizePlayer() {
+            state.isExpanded = false;
+            state.isPlaylistOpen = false;
+            updateUIState();
+        }
+
+        function togglePlaylist() {
+            // 如果当前是关闭状态或展开状态，都切换到列表状态
+            state.isPlaylistOpen = !state.isPlaylistOpen;
+            if (state.isPlaylistOpen) {
+                state.isExpanded = true; // 打开列表需要展开尺寸
+            } else {
+                // 关闭列表时，回到展开的播放器界面
+                state.isExpanded = true; 
+            }
+            updateUIState();
+        }
+
+        function renderPlaylist() {
+            const container = document.getElementById('playlistContainer');
+            
+            if (!state.playlist.length) {
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fas fa-music text-3xl mb-2 opacity-30"></i>
+                        <p class="text-sm">暂无音乐</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = state.playlist.map((track, i) => `
+                <div class="playlist-item rounded-xl p-2.5 cursor-pointer mb-1.5 ${i === state.currentTrack ? 'active' : ''}" onclick="selectTrack(${i})">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style="background: ${track.cover}">
+                            <i class="fas fa-music text-white/30 text-xs"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-white font-medium truncate text-sm">${track.title}</p>
+                            <p class="text-gray-400 text-xs truncate">${track.artist}</p>
+                        </div>
+                        <button class="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-red-400 transition-colors" onclick="event.stopPropagation(); removeTrack(${i})">
+                            <i class="fas fa-times text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function selectTrack(index) {
+            loadTrack(index);
+            audio.play().then(() => {
+                state.isPlaying = true;
+                updatePlayState();
+            }).catch(console.error);
+            
+            // 选择歌曲后，切换到播放器视图
+            state.isPlaylistOpen = false;
+            state.isExpanded = true;
+            updateUIState();
+        }
+
+        function removeTrack(index) {
+            URL.revokeObjectURL(state.playlist[index].url);
+            state.playlist.splice(index, 1);
+            
+            if (state.currentTrack === index) {
+                if (state.playlist.length) {
+                    loadTrack(Math.min(index, state.playlist.length - 1));
+                    if (!state.isPlaying) audio.pause();
+                } else {
+                    state.currentTrack = -1;
+                    audio.src = '';
+                    state.isPlaying = false;
+                    updatePlayState();
+                }
+            } else if (state.currentTrack > index) {
+                state.currentTrack--;
+            }
+            
+            // 如果删光了，回到空状态
+            if (state.playlist.length === 0) {
+                state.isExpanded = false;
+                state.isPlaylistOpen = false;
+            }
+            
+            renderPlaylist();
+            updateUIState();
+        }
+
+        // ==================== 拖动系统 ====================
+        const MARGIN = 20;
+        const DRAG_THRESHOLD = 5;
+
+        function initPosition() {
+            const rect = dynamicIsland.getBoundingClientRect();
+            state.currentX = (window.innerWidth - rect.width) / 2;
+            state.currentY = MARGIN + 40;
+            updateTransform();
+        }
+
+        function updateTransform() {
+            container.style.transform = `translate3d(${state.currentX}px, ${state.currentY}px, 0)`;
+        }
+
+        function onDragStart(e) {
+            if (e.target.closest('input, button, label')) return;
+            
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            state.isPreDragging = true;
+            state.isDragging = false;
+            state.dragStartX = clientX;
+            state.dragStartY = clientY;
+            state.initialX = state.currentX;
+            state.initialY = state.currentY;
+        }
+
+        function onDragMove(e) {
+            if (!state.isPreDragging && !state.isDragging) return;
+            
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            const deltaX = clientX - state.dragStartX;
+            const deltaY = clientY - state.dragStartY;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+            if (!state.isDragging && distance > DRAG_THRESHOLD) {
+                state.isDragging = true;
+                container.classList.add('dragging');
+                container.classList.remove('snapping');
+                snapIndicator.classList.add('visible');
+            }
+
+            if (state.isDragging) {
+                const rect = dynamicIsland.getBoundingClientRect();
+                const maxX = window.innerWidth - rect.width - MARGIN;
+                const maxY = window.innerHeight - rect.height - MARGIN;
+                
+                state.currentX = Math.max(MARGIN, Math.min(maxX, state.initialX + deltaX));
+                state.currentY = Math.max(MARGIN, Math.min(maxY, state.initialY + deltaY));
+                
+                updateTransform();
+                updateSnapIndicator();
+                
+                e.preventDefault();
+            }
+        }
+
+        function onDragEnd() {
+            if (state.isDragging) {
+                container.classList.remove('dragging');
+                container.classList.add('snapping');
+                snapIndicator.classList.remove('visible');
+                snapToEdge();
+            }
+            
+            state.isPreDragging = false;
+            state.isDragging = false;
+        }
+
+        function updateSnapIndicator() {
+            const rect = dynamicIsland.getBoundingClientRect();
+            const pos = calculateSnapPosition();
+            
+            snapIndicator.style.left = pos.x + 'px';
+            snapIndicator.style.top = pos.y + 'px';
+            snapIndicator.style.width = rect.width + 'px';
+            snapIndicator.style.height = rect.height + 'px';
+            snapIndicator.style.borderRadius = dynamicIsland.classList.contains('expanded') ? '40px' : '26px';
+        }
+
+        function calculateSnapPosition() {
+            const rect = dynamicIsland.getBoundingClientRect();
+            const centerX = state.currentX + rect.width / 2;
+            const centerY = state.currentY + rect.height / 2;
+            
+            const distLeft = centerX;
+            const distRight = window.innerWidth - centerX;
+            const distTop = centerY;
+            const distBottom = window.innerHeight - centerY;
+            
+            const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+            
+            let snapX = state.currentX;
+            let snapY = state.currentY;
+            
+            if (minDist === distLeft) {
+                snapX = MARGIN;
+            } else if (minDist === distRight) {
+                snapX = window.innerWidth - rect.width - MARGIN;
+            } else if (minDist === distTop) {
+                snapY = MARGIN;
+            } else {
+                snapY = window.innerHeight - rect.height - MARGIN;
+            }
+            
+            return { x: snapX, y: snapY };
+        }
+
+        function snapToEdge() {
+            const pos = calculateSnapPosition();
+            state.currentX = pos.x;
+            state.currentY = pos.y;
+            updateTransform();
+        }
+
+        container.addEventListener('click', (e) => {
+            if (state.isDragging || e.target.closest('input, button, label')) return;
+            
+            if (!state.isExpanded && state.playlist.length) {
+                expandPlayer();
+            }
+        });
+
+        container.addEventListener('mousedown', onDragStart);
+        container.addEventListener('touchstart', onDragStart, { passive: false });
+        document.addEventListener('mousemove', onDragMove);
+        document.addEventListener('touchmove', onDragMove, { passive: false });
+        document.addEventListener('mouseup', onDragEnd);
+        document.addEventListener('touchend', onDragEnd);
+
+        // ==================== 可视化 ====================
+        let animationId = null;
+        const dataArray = new Uint8Array(128);
+
+        function drawVisualizer() {
+            animationId = requestAnimationFrame(drawVisualizer);
+            
+            if (!analyser || !state.isPlaying) {
+                ctx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+                drawIdleBars();
+                return;
+            }
+            
+            analyser.getByteFrequencyData(dataArray);
+            ctx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+            
+            const barWidth = 3;
+            const gap = 4;
+            const totalBars = Math.floor(visualizerCanvas.width / (barWidth + gap));
+            const step = Math.floor(dataArray.length / totalBars);
+            
+            for (let i = 0; i < totalBars; i++) {
+                const value = dataArray[i * step];
+                const barHeight = Math.max(2, (value / 255) * visualizerCanvas.height * 0.85);
+                
+                const x = i * (barWidth + gap);
+                const y = visualizerCanvas.height - barHeight;
+                
+                const gradient = ctx.createLinearGradient(x, visualizerCanvas.height, x, y);
+                gradient.addColorStop(0, '#ff2d95');
+                gradient.addColorStop(0.5, '#b44aff');
+                gradient.addColorStop(1, '#00d4ff');
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.roundRect(x, y, barWidth, barHeight, 1.5);
+                ctx.fill();
+            }
+            
+            const miniBars = document.querySelectorAll('#miniWave span');
+            miniBars.forEach((bar, i) => {
+                const value = dataArray[i * 8 + 10] || 0;
+                const height = Math.max(4, (value / 255) * 18);
+                bar.style.height = `${height}px`;
+            });
+        }
+
+        function drawIdleBars() {
+            const barWidth = 3;
+            const gap = 4;
+            const totalBars = Math.floor(visualizerCanvas.width / (barWidth + gap));
+            
+            for (let i = 0; i < totalBars; i++) {
+                const barHeight = 3;
+                const x = i * (barWidth + gap);
+                const y = visualizerCanvas.height - barHeight;
+                
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.beginPath();
+                ctx.roundRect(x, y, barWidth, barHeight, 1.5);
+                ctx.fill();
+            }
+        }
+
+        // ==================== 音频事件 ====================
+        audio.addEventListener('timeupdate', () => {
+            if (!audio.duration) return;
+            document.getElementById('progressBar').value = (audio.currentTime / audio.duration) * 100;
+            document.getElementById('currentTime').textContent = formatTime(audio.currentTime);
+        });
+
+        audio.addEventListener('ended', () => {
+            if (state.repeatMode === 2) {
+                audio.currentTime = 0;
+                audio.play().catch(console.error);
+            } else if (state.repeatMode === 1 || state.currentTrack < state.playlist.length - 1) {
+                nextTrack();
+            } else {
+                state.isPlaying = false;
+                updatePlayState();
+            }
+        });
+
+        document.getElementById('progressBar').addEventListener('input', (e) => seekTo(e.target.value));
+
+        // ==================== 工具函数 ====================
+        function formatTime(seconds) {
+            if (isNaN(seconds)) return '0:00';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        window.addEventListener('resize', () => {
+            if (!state.isDragging) {
+                snapToEdge();
+            }
+        });
+
+        // ==================== 初始化 ====================
+        function init() {
+            initPosition();
+            drawVisualizer();
+            updateUIState();
+            setVolume(state.volume * 100);
+        }
+
+        init();
+    </script>
+</body>
+</html>
