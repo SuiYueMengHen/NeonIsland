@@ -81,4 +81,11 @@ git clone https://github.com/SuiYueMengHen/NeonIsland.git
 ## 📄 许可证
 
 本项目基于 [MIT](LICENSE) 许可证开源。
-    
+
+## Project Status
+
+This repository is maintained as part of SuiYueMengHen's open-source project collection. Issues and suggestions are welcome.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
